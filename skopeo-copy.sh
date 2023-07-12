@@ -71,14 +71,18 @@ if [[ -z $API_ENDPOINT || -z $AWS_ACCOUNT_ID || -z $AWS_PROFILE || -z $AWS_REGIO
     exit 1
 fi
 
+# Skopeo logins
+#skopeo login --username ${DOCKER_USERNAME} --password ${DOCKER_PASSWORD} docker.io
+#aws ecr get-login-password --region ${AWS_REGION} | skopeo login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
 # Retrieve auth token using username/password
-TOKEN=$(curl -sf -H "Content-Type: application/json" -X POST -d '{"username": "'${DOCKER_USERNAME}'", "password": "'${DOCKER_PASSWORD}'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
+TOKEN=$(curl -sf -H "Content-Type: application/json" -X POST -d '{"username": "'"${DOCKER_USERNAME}"'", "password": "'"${DOCKER_PASSWORD}"'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+RESPONSE=$(curl -sf -H "Authorization: JWT ${TOKEN}" "${API_ENDPOINT}${DOCKER_NAMESPACE}")
 
 # Get a count of the images. determine page count at 25 per page. add 1 for remainder.
-image_count=$(curl -sf -H "Authorization: JWT ${TOKEN}" "${API_ENDPOINT}${DOCKER_NAMESPACE}" | jq -r '.count')
-page_count=$(( ($image_count / 25) + 1 ))
-echo $image_count
-echo $page_count
+image_count=$(echo "$RESPONSE" | jq -r '.count')
+page_count=$(( (image_count / 25) + 1 ))
 
 # Query each page. filter for image name. append to repo_names list
 for (( _page=1; _page<=page_count; _page++ )); do
@@ -92,28 +96,56 @@ if [ ! "$repo_names" ]; then
     exit 1
 fi
 
-# Skopeo logins
-skopeo login --username ${DOCKER_USERNAME} --password ${DOCKER_PASSWORD} docker.io
-aws ecr get-login-password --region ${AWS_REGION} | skopeo login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+ecr_repo_list=$(aws ecr describe-repositories | jq -r '.repositories[].repositoryName')
 
-repo_list=$(aws ecr describe-repositories | jq -r '.repositories[].repositoryName')
+for _repo in $repo_names; do
+    image_tags=()
+    all_tags=()
+    sorted_tags=()
+    recent_tags=()
 
-# TODO: troubleshooting
-#for _repo in $repo_names; do
-#    for _ecr_repo in ${repo_list[@]}; do
-#        if [ ! $_repo = $_ecr_repo ]; then
-#            echo "Creating $_repo"
-#            #echo "aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager"
-#        else
-#            echo "Repository already exists"
-#        fi
-#    done
-#done
+    # Create repository if not found
+    if ! echo "$ecr_repo_list" | grep -q "$_repo"; then
+        echo "Creating $_repo in ECR..."
+        #echo "aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager"
+    else
+        echo "Repository $_repo already exists."
+    fi
 
-##TODO:
-#    tag_list=$(skopeo --override-os linux inspect docker://docker.io/"${DOCKER_NAMESPACE}/${_repo}" | jq -r '.RepoTags[]')
-#    for _tag in $tag_list; do
-#        echo "Copying ${_repo}:${_tag}..."
-#        skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_tag} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_tag} ${SKOPEO_OPTS}
-#        echo
-#    done
+    # Query & parse image tags
+    tag_count=$(curl -sf -H "Authorization: JWT ${TOKEN}" "${API_ENDPOINT}${DOCKER_NAMESPACE}/${_repo}/tags/" | jq -r '.count')
+
+    # If no tags, bail out of loop
+    if [ "$tag_count" = 0 ]; then
+        continue
+    elif [ "$tag_count" -gt 100 ]; then
+        continue
+    fi
+    page_count=$(( (tag_count / 25) + 1 ))
+
+    # Query each page. filter for tag name. append to image_tags list
+    for (( _page=1; _page<=page_count; _page++ )); do
+        image_tags+=$(curl -sf -H "Authorization: JWT ${TOKEN}" "${API_ENDPOINT}${DOCKER_NAMESPACE}/${_repo}/tags/?page_size=25&page=${_page}" | jq -r '.results|.[]|.name')
+        image_tags+=" "
+    done
+
+    for _tag in $image_tags; do
+        tag_date=$(curl -sf -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/namespaces/${DOCKER_NAMESPACE}/repositories/${_repo}/tags/${_tag}" | jq -r '.tag_last_pushed')
+        all_tags+=("$_tag|${tag_date}")
+    done
+        
+    # Sort the tags array based on tag dates in descending order
+    sorted_tags=$(printf "%s\n" "${all_tags[@]}" | sort -t '|' -k2 -r | head -n 20)
+
+    ## Extract only the tag names from the sorted tags
+    for _sorted_tag in "${sorted_tags[@]}"; do
+      tag_name=$(echo "$_sorted_tag" | cut -d '|' -f1)
+      recent_tags+=("$tag_name")
+    done
+    
+    ## Use skopeo copy to sync $repo:$tag to ECR
+    for _recent in $recent_tags; do
+        echo "Copying ${_repo}:${_recent}..."
+        #skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
+    done
+done
