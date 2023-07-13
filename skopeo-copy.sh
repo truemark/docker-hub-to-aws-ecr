@@ -72,8 +72,10 @@ if [[ -z $API_ENDPOINT || -z $AWS_ACCOUNT_ID || -z $AWS_PROFILE || -z $AWS_REGIO
 fi
 
 # Skopeo logins
+echo "Authenticating to endpoints..."
 skopeo login --username ${DOCKER_USERNAME} --password ${DOCKER_PASSWORD} docker.io
 aws ecr get-login-password --region ${AWS_REGION} | skopeo login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+echo
 
 # Retrieve auth token using username/password
 TOKEN=$(curl -sf -H "Content-Type: application/json" -X POST -d '{"username": "'"${DOCKER_USERNAME}"'", "password": "'"${DOCKER_PASSWORD}"'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
@@ -117,7 +119,9 @@ for _repo in $repo_names; do
 
     # If no tags, bail out of loop
     if [ "$tag_count" = 0 ]; then
+        echo "No tags found for ${_repo} image; skipping."
         continue
+    # If more than 250 tags, limit to 250 to avoid breakage
     elif [ "$tag_count" -gt 250 ]; then
         tag_count=250
     fi
