@@ -72,8 +72,8 @@ if [[ -z $API_ENDPOINT || -z $AWS_ACCOUNT_ID || -z $AWS_PROFILE || -z $AWS_REGIO
 fi
 
 # Skopeo logins
-#skopeo login --username ${DOCKER_USERNAME} --password ${DOCKER_PASSWORD} docker.io
-#aws ecr get-login-password --region ${AWS_REGION} | skopeo login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+skopeo login --username ${DOCKER_USERNAME} --password ${DOCKER_PASSWORD} docker.io
+aws ecr get-login-password --region ${AWS_REGION} | skopeo login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
 # Retrieve auth token using username/password
 TOKEN=$(curl -sf -H "Content-Type: application/json" -X POST -d '{"username": "'"${DOCKER_USERNAME}"'", "password": "'"${DOCKER_PASSWORD}"'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
@@ -107,7 +107,7 @@ for _repo in $repo_names; do
     # Create repository if not found
     if ! echo "$ecr_repo_list" | grep -q "$_repo"; then
         echo "Creating $_repo in ECR..."
-        #echo "aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager"
+        echo "aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager"
     else
         echo "Repository $_repo already exists."
     fi
@@ -118,8 +118,8 @@ for _repo in $repo_names; do
     # If no tags, bail out of loop
     if [ "$tag_count" = 0 ]; then
         continue
-    elif [ "$tag_count" -gt 100 ]; then
-        continue
+    elif [ "$tag_count" -gt 250 ]; then
+        tag_count=250
     fi
     page_count=$(( (tag_count / 25) + 1 ))
 
@@ -146,6 +146,6 @@ for _repo in $repo_names; do
     ## Use skopeo copy to sync $repo:$tag to ECR
     for _recent in $recent_tags; do
         echo "Copying ${_repo}:${_recent}..."
-        #skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
+        skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
     done
 done
