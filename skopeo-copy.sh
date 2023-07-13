@@ -107,7 +107,7 @@ for _repo in $repo_names; do
     # Create repository if not found
     if ! echo "$ecr_repo_list" | grep -q "$_repo"; then
         echo "Creating $_repo in ECR..."
-        echo "aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager"
+        aws ecr create-repository --repository-name "${_repo}" --region "${AWS_REGION}" --profile "${AWS_PROFILE}" --no-cli-pager
     else
         echo "Repository $_repo already exists."
     fi
@@ -146,7 +146,7 @@ for _repo in $repo_names; do
     ## Use skopeo copy to sync $repo:$tag to ECR
     for _recent in $recent_tags; do
         echo "Copying ${_repo}:${_recent}..."
-        skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
+        skopeo copy docker://${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
         echo
     done
 done

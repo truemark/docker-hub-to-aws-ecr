@@ -9,6 +9,11 @@ This utility copies images & tags from Docker Hub to AWS ECR.
 	--aws-region "us-west-2" --docker-namespace "truemark" --docker-username "username" \
 	--docker-password "password" --skopeo-opts "--multi-arch all"
 
+# Requirements
+
+In order to use this utility you'll need to provide login credentials to Docker
+Hub and configure credentials in an AWS profile with access to ECR.
+
 ## Process
 
 This utility generates a list of images within a Docker namespace (ie;
@@ -17,7 +22,10 @@ truemark). Using this list it then queries for each of the images tags and
 images and recent tags are then copied from Docker Hub to AWS ECR using skopeo
 copy.
 
-# Requirements
+## Net Yet Implemented
 
-In order to use this utility you'll need to provide login credentials to Docker
-Hub and configure credentials / an AWS profile with access to ECR.
+1. The IAM access configuration for these repositories is not yet configured. This
+support needs to be added to the code, but I ran out of time to implement.
+
+2. The script currently uses local install of skopeo. Erik requested this use
+the latest Docker image; not yet implemented.
