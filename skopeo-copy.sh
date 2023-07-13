@@ -147,5 +147,6 @@ for _repo in $repo_names; do
     for _recent in $recent_tags; do
         echo "Copying ${_repo}:${_recent}..."
         skopeo copy docker://docker.io/${DOCKER_NAMESPACE}/${_repo}:${_recent} docker://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${_repo}:${_recent} ${SKOPEO_OPTS}
+        echo
     done
 done
